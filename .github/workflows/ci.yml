@@ -1,0 +1,122 @@
+name: ci
+
+# Runs on every push and pull request. This is the gate: nothing gets tagged
+# until this is green, which is the point of having it separate from the
+# release workflow below.
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+# A new push to the same branch cancels the previous run. On a documentation
+# typo that saves more time than it costs.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # gofmt and go vet are separate jobs rather than steps in the test job so a
+  # formatting failure is reported as a formatting failure, not as "tests
+  # failed" three minutes later.
+  lint:
+    name: fmt and vet
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Check formatting
+        run: |
+          unformatted=$(gofmt -l -s .)
+          if [ -n "$unformatted" ]; then
+            echo "::error::these files need gofmt -s -w:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Vet
+        run: go vet ./...
+
+  test:
+    name: test (${{ matrix.os }}, go ${{ matrix.go }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # The library tracks the single Go release go.mod requires, on every
+        # supported OS.
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        go: ['1.26']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+          cache: true
+
+      # The module resolves from the proxy exactly as a consumer would get it,
+      # which is the only way to catch a dependency that is not in go.mod.
+      - name: Verify the module is complete
+        run: |
+          go mod verify
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
+
+      - name: Test
+        run: go test -count=1 -timeout 300s ./...
+
+      - name: Test with the race detector
+        run: go test -count=1 -race -timeout 600s ./...
+
+      # A package that cannot be imported is a broken release even when its
+      # own tests pass, so the module is consumed the way a user would.
+      - name: Check the public API compiles for a consumer
+        run: go build ./...
+
+  # The examples in example_test.go are compiled by `go test`, but they are not
+  # run, because most of them print. This job checks the output of the ones
+  # with an "// Output:" comment, which are real assertions.
+  examples:
+    name: examples
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Run the examples
+        run: go test -count=1 -run Example -v . 2>&1 | tee examples.log
+      - name: Fail on an example mismatch
+        run: |
+          # `go test` already fails the job on a mismatch; this grep is here
+          # so the log line is surfaced in the summary rather than buried.
+          if grep -q -- '--- FAIL: Example' examples.log; then
+            grep -- '--- FAIL: Example' examples.log
+            exit 1
+          fi
+
+  # The benchmark is not a gate, but a large regression is worth seeing, and
+  # it only means anything against a baseline. The numbers are posted so a
+  # change in allocation count shows up in the run rather than in a report
+  # months later.
+  bench:
+    name: benchmark
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Benchmark
+        run: go test -run XXX -bench . -benchmem -timeout 600s ./...

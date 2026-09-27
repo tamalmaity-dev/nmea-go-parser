@@ -1,0 +1,160 @@
+name: release
+
+# Cross-compiles the nmea-dump binary for every supported platform and attaches
+# the results to a GitHub release.
+#
+# The trigger is a version tag, and the tag is the source of truth for the
+# release name. The VERSION file has to agree with it: `make check-version` is
+# run here as a gate, so a release cannot ship a binary that reports a
+# different number than the tag it was cut from.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build, e.g. 0.1.2'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: build release binaries
+    runs-on: ubuntu-latest
+    # The release job needs the resolved version to name the artifact set, so
+    # it is passed along rather than recomputed.
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The VERSION file has to be present to compare against the tag, and
+          # a full history is needed for the commit hash the binary reports.
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # Works out which version this is: the tag when one was pushed, the
+      # workflow input when it was dispatched by hand.
+      - name: Resolve the version
+        id: ver
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            version="${{ inputs.version }}"
+            source="workflow input"
+          else
+            version="${GITHUB_REF_NAME#v}"
+            source="tag $GITHUB_REF_NAME"
+          fi
+          if [ -z "$version" ]; then
+            echo "::error::could not determine the version"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "source=$source" >> "$GITHUB_OUTPUT"
+          echo "building $version from $source"
+
+      # The gate. A mismatch means somebody bumped one and not the other, and
+      # shipping the wrong number is worse than shipping nothing.
+      - name: Check VERSION matches the tag
+        run: |
+          file=$(cat VERSION | tr -d '[:space:]')
+          echo "VERSION file: $file"
+          echo "releasing:     ${{ steps.ver.outputs.version }}"
+          if [ "$file" != "${{ steps.ver.outputs.version }}" ]; then
+            echo "::error::VERSION ($file) does not match the release (${{ steps.ver.outputs.version }}). Update VERSION and commit it before tagging."
+            exit 1
+          fi
+
+      - name: Build every platform
+        run: make release VERSION=${{ steps.ver.outputs.version }}
+
+      - name: List the artifacts
+        run: ls -lh dist
+
+      - name: Verify the binaries actually run
+        run: |
+          # Cross-compiled binaries cannot all be executed on one runner, so
+          # the host build is run and the rest are checked for being real
+          # executables rather than truncated files. A build that silently
+          # produced an empty file is the failure this catches.
+          ./dist/nmea-dump_${{ steps.ver.outputs.version }}_linux_amd64 -version
+
+          for f in dist/nmea-dump_*; do
+            if [ ! -s "$f" ]; then
+              echo "::error::$f is empty"
+              exit 1
+            fi
+          done
+          echo "all artifacts are non-empty"
+
+      - name: Upload the binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: nmea-dump-${{ steps.ver.outputs.version }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    name: publish the release
+    needs: build
+    runs-on: ubuntu-latest
+    # A release is only published from a real tag. A manual dispatch still
+    # builds and uploads the artifacts, but it does not create a release,
+    # because a release notes page for a version that was never tagged is
+    # confusing to everyone who later looks for it.
+    if: github.event_name == 'push'
+    steps:
+      - name: Download the built artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: nmea-dump-${{ needs.build.outputs.version }}
+          path: dist
+          merge-multiple: true
+
+      - name: Publish
+        uses: softprops/action-gh-release@v2
+        with:
+          name: nmea-go-parser ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
+          files: dist/*
+          body: |
+            ## nmea-go-parser ${{ github.ref_name }}
+
+            ### Library
+
+            ```
+            go get github.com/tamalmaity-dev/nmea-go-parser@${{ github.ref_name }}
+            ```
+
+            ### Tool
+
+            Download the archive for your platform, or install it with
+            `go install github.com/tamalmaity-dev/nmea-go-parser/cmd/nmea-dump@${{ github.ref_name }}`.
+
+            | Platform | File |
+            |---|---|
+            | Linux x86-64 | `nmea-dump_*_linux_amd64` |
+            | Linux arm64 | `nmea-dump_*_linux_arm64` |
+            | Linux arm (Raspberry Pi) | `nmea-dump_*_linux_arm` |
+            | macOS (Intel) | `nmea-dump_*_darwin_amd64` |
+            | macOS (Apple silicon) | `nmea-dump_*_darwin_arm64` |
+            | Windows x86-64 | `nmea-dump_*_windows_amd64.exe` |
+            | Windows arm64 | `nmea-dump_*_windows_arm64.exe` |
+            | FreeBSD x86-64 | `nmea-dump_*_freebsd_amd64` |
+
+            `SHA256SUMS.txt` holds the checksums. Verify with
+            `sha256sum -c SHA256SUMS.txt`.
+
+            ### Trying it without a receiver
+
+            ```
+            nmea-dump -file testdata/sample.nmea
+            ```

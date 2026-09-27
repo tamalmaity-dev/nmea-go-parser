@@ -1,0 +1,26 @@
+# Build output. The Makefile writes here, and a binary committed by accident is
+# a 3 MB diff nobody wants.
+/nmea-dump
+/nmea-dump.exe
+/bin/
+/dist/
+coverage.out
+*.test
+*.exe
+*.out
+
+# Go workspace and build cache files, if anyone uses them locally.
+go.work
+go.work.sum
+
+# Editor and OS noise.
+.idea/
+.vscode/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+
+# Local Command Code agent tooling; not part of the library.
+.commandcode/
+.docs/
