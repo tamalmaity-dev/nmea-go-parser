@@ -4,11 +4,10 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/tamalmaity-dev/nmea-go-parser.svg)](https://pkg.go.dev/github.com/tamalmaity-dev/nmea-go-parser)
 [![Go Report Card](https://goreportcard.com/badge/github.com/tamalmaity-dev/nmea-go-parser)](https://goreportcard.com/report/github.com/tamalmaity-dev/nmea-go-parser)
 
-
-This is a NMEA 0183 parser for the Go programming language (Golang). Point it at a
-serial port, a TCP socket, a log file, or a pipe, and it hands you latitude,
-longitude, altitude, speed, course, heading, satellite status, and fix quality
-as typed Go values rather than strings you split yourself.
+This is a NMEA 0183 parser for the Go programming language (Golang). Point it
+at a serial port, a TCP socket, a log file, or a pipe, and it hands you
+latitude, longitude, altitude, speed, course, heading, satellite status, and
+fix quality as typed Go values rather than strings you split yourself.
 
 - **56 sentence formatters**, NMEA **2.00 through 4.30**
 - **Serial, TCP, file, and stdin** input, plus a ready-made `nmea-dump` CLI
@@ -79,6 +78,8 @@ as typed Go values rather than strings you split yourself.
   and prints normal, raw, or satellite-sky output.
 
 ## Installing
+
+Requires **Go 1.26 or later**, as declared in `go.mod`. Go 1.27 also works.
 
 ### As a library
 

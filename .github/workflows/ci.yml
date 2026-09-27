@@ -51,10 +51,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # The library tracks the single Go release go.mod requires, on every
-        # supported OS.
+        # Every supported OS, on the release go.mod requires and on the
+        # current one. Testing the newer release is what catches a change in
+        # vet, in the toolchain, or in the standard library that would
+        # otherwise surface only in someone else's build.
         os: [ubuntu-latest, windows-latest, macos-latest]
-        go: ['1.26']
+        go: ['1.26', '1.27']
     steps:
       - uses: actions/checkout@v4
 
