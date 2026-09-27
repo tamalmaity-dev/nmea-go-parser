@@ -5,7 +5,7 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/tamalmaity-dev/nmea-go-parser)](https://goreportcard.com/report/github.com/tamalmaity-dev/nmea-go-parser)
 
 
-A NMEA 0183 parser for the Go programming language (Golang). Point it at a
+This is a NMEA 0183 parser for the Go programming language (Golang). Point it at a
 serial port, a TCP socket, a log file, or a pipe, and it hands you latitude,
 longitude, altitude, speed, course, heading, satellite status, and fix quality
 as typed Go values rather than strings you split yourself.
